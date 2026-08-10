@@ -1,0 +1,521 @@
+---
+import { getCollection } from "astro:content";
+import { Image, getImage } from "astro:assets";
+import Layout from "../layouts/Layout.astro";
+import avatar from "../assets/avatar.jpg";
+import lqipData from "../lqip.json";
+import themeLabels from "../themes.json";
+
+const LQIP = lqipData as Record<string, string>;
+
+const THEME_LABELS: Record<string, string> = themeLabels;
+const THEME_ORDER = Object.keys(THEME_LABELS);
+const themeLabel = (t: string) => THEME_LABELS[t] ?? t;
+
+const imageModules = import.meta.glob<{ default: ImageMetadata }>(
+  "../assets/photos/**/*.{jpg,jpeg,png,webp,avif}",
+  { eager: true },
+);
+const byName: Record<string, ImageMetadata> = {};
+for (const path in imageModules) byName[path.split("/").pop()!] = imageModules[path].default;
+
+const fmtFull = new Intl.DateTimeFormat("en-US", { day: "numeric", month: "short", year: "numeric" });
+
+const entries = await getCollection("photos");
+const photos = entries
+  .map(({ id, data }) => {
+    const img = byName[(data.image ?? "").split("/").pop()!];
+    if (!img) return null;
+    const themes = (data.tags ?? []).filter(Boolean).sort(
+      (a, b) => THEME_ORDER.indexOf(a) - THEME_ORDER.indexOf(b),
+    );
+    return {
+      slug: id,
+      themes,
+      year: String(data.date.getUTCFullYear()),
+      dateFull: fmtFull.format(data.date),
+      favorite: data.favorite,
+      ts: data.date.getTime(),
+      img,
+    };
+  })
+  .filter((p): p is NonNullable<typeof p> => p !== null)
+  .sort((a, b) => b.ts - a.ts);
+
+const full: Record<string, string> = {};
+for (const p of photos) {
+  full[p.slug] = (await getImage({ src: p.img, width: 2560, format: "webp" })).src;
+}
+
+const EAGER = 8; // первые карточки грузим приоритетно — ускоряет появление верхнего экрана (LCP)
+const years = [...new Set(photos.map((p) => p.year))].sort().reverse();
+const themesPresent = THEME_ORDER.filter((t) => photos.some((p) => p.themes.includes(t)));
+const favCount = photos.filter((p) => p.favorite).length;
+const yearNow = new Date().getFullYear();
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+---
+
+<Layout>
+  <header class="masthead wrap">
+    <div class="who">
+      <Image class="avatar" src={avatar} width={132} height={132} alt="Mariam Martynova" loading="eager" />
+      <div class="id">
+        <h1>Mariam Martynova</h1>
+        <p>Artist · TODO: подпись под именем</p>
+      </div>
+    </div>
+    <nav class="contacts" aria-label="Contacts">
+      <a href={`${base}/about`}>About</a>
+      {/* TODO: свои контакты */}
+      <a href="https://t.me/" target="_blank" rel="noopener">Telegram</a>
+      <a href="mailto:hello@mariam.art">Email</a>
+    </nav>
+  </header>
+
+  <nav class="filters wrap" aria-label="Filters">
+    <div class="filters-rows">
+      <div class="frow" role="group" aria-label="Themes">
+        {themesPresent.map((t) => (
+          <button class="chip" data-group="theme" data-val={t}>{themeLabel(t)}</button>
+        ))}
+      </div>
+      <div class="frow frow-years" role="group" aria-label="Years">
+        {years.map((y) => (
+          <button class="chip chip-year" data-group="year" data-val={y}>{y}</button>
+        ))}
+      </div>
+    </div>
+    {favCount > 0 && (
+      <div class="scope" role="group" aria-label="Scope">
+        <button class="seg is-active" data-scope="all">All</button>
+        <button class="seg" data-scope="fav">★ Favorites</button>
+      </div>
+    )}
+  </nav>
+
+  <main class="wrap gallery">
+    <div id="grid" class="grid">
+    {photos.map((p, i) => (
+      <button
+        class:list={["card", { "is-fav": p.favorite }]}
+        style={`--i:${Math.min(i, 24)};background-image:url(${LQIP[p.slug] ?? ""})`}
+        data-themes={p.themes.join("|")}
+        data-year={p.year}
+        data-fav={p.favorite ? "1" : "0"}
+        data-ar={(p.img.height / p.img.width).toFixed(4)}
+        data-slug={p.slug}
+        data-full={full[p.slug]}
+        data-meta={`${p.dateFull} · ${p.themes.map(themeLabel).join(", ")}`}
+        aria-label={`Open photo, ${p.dateFull}`}
+      >
+        <Image
+          src={p.img}
+          alt=""
+          widths={[320, 480, 640, 960]}
+          sizes="(max-width: 640px) 50vw, (max-width: 1100px) 33vw, 300px"
+          loading={i < EAGER ? "eager" : "lazy"}
+          fetchpriority={i < EAGER ? "high" : "auto"}
+          decoding="async"
+          format="webp"
+        />
+      </button>
+    ))}
+    </div>
+  </main>
+
+  {/* Синхронная первичная раскладка масонри — выполняется во время парсинга,
+      ДО первого paint, поэтому карточки сразу появляются в сетке (без FOUC-разлёта).
+      Единый источник раскладки: кладём в window.__mason, module-скрипт переиспользует. */}
+  <script is:inline>
+    (function () {
+      var grid = document.getElementById("grid");
+      var cards = [].slice.call(grid.querySelectorAll(".card"));
+      var GAP = 14;
+      function columns(w) { return w < 520 ? 2 : Math.max(2, Math.floor((w + GAP) / (290 + GAP))); }
+      function layout() {
+        var w = grid.clientWidth; if (!w) return;
+        var cols = columns(w), colW = (w - GAP * (cols - 1)) / cols, colH = new Array(cols).fill(0);
+        for (var n = 0; n < cards.length; n++) {
+          var c = cards[n]; if (c.hidden) continue;
+          var k = 0; for (var i = 1; i < cols; i++) if (colH[i] < colH[k]) k = i;
+          c.style.width = colW + "px";
+          c.style.transform = "translate(" + (colW + GAP) * k + "px, " + colH[k] + "px)";
+          colH[k] += colW * parseFloat(c.dataset.ar || "1") + GAP;
+        }
+        grid.style.height = Math.max(0, Math.max.apply(null, colH) - GAP) + "px";
+      }
+      window.__mason = layout;
+      layout();
+    })();
+  </script>
+
+  <footer class="footer wrap">
+    <span>© {yearNow} Mariam Martynova</span>
+    <span>{photos.length} works</span>
+    <a href={`${base}/about`}>About</a>
+  </footer>
+
+  <dialog id="lightbox" class="lightbox">
+    <button class="lb-close" aria-label="Close">✕</button>
+    <button class="lb-share" aria-label="Share photo" title="Share">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 15V3"/><path d="M8 7l4-4 4 4"/><path d="M5 12v7a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-7"/>
+      </svg>
+    </button>
+    <span class="lb-toast" role="status" aria-live="polite"></span>
+    <button class="lb-nav lb-prev" aria-label="Previous">‹</button>
+    <figure class="lb-stage">
+      <img class="lb-img" alt="" />
+      <figcaption class="lb-cap"><span class="lb-spin" aria-hidden="true"></span><span class="lb-meta"></span><span class="lb-count"></span></figcaption>
+    </figure>
+    <button class="lb-nav lb-next" aria-label="Next">›</button>
+  </dialog>
+</Layout>
+
+<style>
+  /* Masthead */
+  .masthead {
+    display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap;
+    padding-top: clamp(34px, 6vw, 64px); padding-bottom: clamp(26px, 4vw, 40px);
+  }
+  .who { display: flex; align-items: center; gap: 20px; }
+  .contacts { display: inline-flex; gap: 20px; font-size: 0.9rem; }
+  .contacts a { color: var(--muted); border-bottom: 1px solid transparent; transition: color 0.15s, border-color 0.15s; }
+  .contacts a:hover { color: var(--fg); border-color: var(--hair); }
+  .avatar {
+    width: clamp(60px, 9vw, 84px); height: clamp(60px, 9vw, 84px);
+    border-radius: 50%; object-fit: cover;
+    border: 1px solid var(--line);
+  }
+  .id h1 {
+    margin: 0; font-family: var(--font-display); font-weight: 500;
+    font-size: clamp(2rem, 6vw, 3.4rem); line-height: 0.98; letter-spacing: -0.015em;
+    font-variation-settings: "opsz" 140;
+  }
+  .id p {
+    margin: 6px 0 0; color: var(--muted); font-size: clamp(0.85rem, 2vw, 0.98rem);
+    letter-spacing: 0.01em;
+  }
+
+  /* Filters */
+  .filters {
+    position: sticky; top: 0; z-index: 6;
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    padding-top: 16px; padding-bottom: 14px; margin-bottom: 6px;
+    background: color-mix(in srgb, var(--bg) 86%, transparent);
+    backdrop-filter: saturate(160%) blur(12px);
+    border-bottom: 1px solid var(--line);
+  }
+  .filters-rows { display: flex; flex-direction: column; gap: 9px; flex: 1 1 auto; min-width: 0; }
+  .frow { display: flex; flex-wrap: wrap; gap: 7px; }
+  .frow-years { gap: 6px; }
+  .frow-years .chip { font-size: 0.76rem; padding: 6px 12px; color: var(--muted); background: transparent; }
+  .frow-years .chip:hover { color: var(--fg); }
+  .frow-years .chip.is-active { background: var(--chip-active); color: var(--chip-active-fg); border-color: var(--chip-active); }
+  .scope { flex: 0 0 auto; display: inline-flex; gap: 3px; padding: 3px; background: var(--chip); border: 1px solid var(--line); border-radius: 999px; }
+  .seg { font: inherit; font-size: 0.82rem; line-height: 1; cursor: pointer; white-space: nowrap; padding: 7px 14px; border-radius: 999px; border: 0; background: transparent; color: var(--chip-fg); transition: background 0.15s, color 0.15s; }
+  .seg:hover { color: var(--fg); }
+  .seg.is-active { background: var(--chip-active); color: var(--chip-active-fg); }
+  .chip {
+    font: inherit; font-size: 0.82rem; line-height: 1; cursor: pointer; white-space: nowrap;
+    padding: 8px 14px; border-radius: 999px; border: 1px solid transparent;
+    background: var(--chip); color: var(--chip-fg);
+    transition: background 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
+  }
+  .chip:hover { color: var(--fg); border-color: var(--hair); }
+  .chip.is-active { background: var(--chip-active); color: var(--chip-active-fg); border-color: var(--chip-active); }
+  .chip-year { font-variant-numeric: tabular-nums; }
+
+  /* Masonry */
+  .gallery { padding-top: 18px; padding-bottom: 60px; }
+  .grid { position: relative; width: 100%; }
+  .card {
+    position: absolute; top: 0; left: 0; padding: 0; border: 0;
+    background-color: var(--card); background-size: cover; background-position: center;
+    border-radius: var(--radius); overflow: hidden; cursor: zoom-in;
+    text-align: left; color: inherit;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    animation: rise 0.5s both; animation-delay: calc(var(--i) * 28ms);
+  }
+  .grid.mason-ready .card { transition: transform 0.3s ease, width 0.3s ease, box-shadow 0.2s ease; }
+  .card[hidden] { display: none; }
+  @keyframes rise { from { opacity: 0; } to { opacity: 1; } }
+  .card img { width: 100%; height: auto; opacity: 0; transition: opacity 0.55s ease; }
+  .card.loaded img { opacity: 1; }
+  .card::after {
+    content: ""; position: absolute; inset: 0; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.05);
+    border-radius: var(--radius); pointer-events: none; transition: box-shadow 0.2s;
+  }
+  .card:hover { z-index: 1; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.14); }
+  .card:hover::after { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.13); }
+
+  .footer {
+    display: flex; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+    color: var(--muted); font-size: 0.85rem; padding-top: 30px; padding-bottom: 56px;
+    border-top: 1px solid var(--line);
+  }
+  .footer .links { display: inline-flex; gap: 18px; }
+  .footer a { border-bottom: 1px solid transparent; transition: border-color 0.15s, color 0.15s; }
+  .footer a:hover { color: var(--fg); border-color: var(--muted); }
+
+  /* Lightbox */
+  .lightbox {
+    width: 100vw; height: 100dvh; max-width: 100vw; max-height: 100dvh;
+    margin: 0; padding: 0; border: 0; overflow: hidden; background: transparent; color: #fff;
+  }
+  .lightbox[open] { display: flex; align-items: center; justify-content: center; }
+  .lightbox::backdrop { background: rgba(0, 0, 0, 0.94); backdrop-filter: blur(5px); }
+  .lb-stage { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  .lb-img { max-width: 92vw; max-height: 86vh; border-radius: 6px; object-fit: contain; }
+  .lb-cap { display: flex; gap: 10px; align-items: center; justify-content: center; font-size: 0.82rem; opacity: 0.7; letter-spacing: 0.02em; }
+  .lb-count { font-variant-numeric: tabular-nums; opacity: 0.7; }
+  .lb-spin {
+    width: 11px; height: 11px; border-radius: 50%; flex: 0 0 auto;
+    border: 1.5px solid rgba(255, 255, 255, 0.25); border-top-color: rgba(255, 255, 255, 0.9);
+    opacity: 0; transition: opacity 0.2s; animation: lb-rot 0.7s linear infinite;
+  }
+  .lb-cap.is-busy .lb-spin { opacity: 0.8; }
+  @keyframes lb-rot { to { transform: rotate(360deg); } }
+  .lb-nav {
+    position: fixed; top: 0; height: 100%; width: 16vw; min-width: 64px; border: 0; cursor: pointer;
+    background: transparent; color: #fff; font-size: 2.2rem; opacity: 0.45; transition: opacity 0.15s;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .lb-nav:hover { opacity: 1; }
+  .lb-prev { left: 0; justify-content: flex-start; padding-left: 22px; }
+  .lb-next { right: 0; justify-content: flex-end; padding-right: 22px; }
+  .lb-close {
+    position: fixed; top: 16px; right: 20px; z-index: 2; cursor: pointer;
+    width: 40px; height: 40px; border: 0; padding: 0;
+    background: transparent; color: #fff; font-size: 1.4rem; line-height: 1;
+    opacity: 0.7; transition: opacity 0.15s; text-shadow: 0 1px 5px rgba(0, 0, 0, 0.5);
+  }
+  .lb-close:hover { opacity: 1; }
+  .lb-share {
+    position: fixed; top: 16px; right: 64px; z-index: 2; cursor: pointer;
+    width: 40px; height: 40px; border: 0; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: transparent; color: #fff; opacity: 0.7; transition: opacity 0.15s;
+    filter: drop-shadow(0 1px 5px rgba(0, 0, 0, 0.5));
+  }
+  .lb-share:hover { opacity: 1; }
+  .lb-toast {
+    position: fixed; top: 22px; left: 50%; transform: translateX(-50%); z-index: 3;
+    padding: 7px 15px; border-radius: 999px; background: rgba(0, 0, 0, 0.72);
+    font-size: 0.8rem; letter-spacing: 0.02em; pointer-events: none;
+    opacity: 0; transition: opacity 0.2s;
+  }
+  .lb-toast.show { opacity: 1; }
+  .lb-nav:focus, .lb-nav:focus-visible, .lb-close:focus, .lb-close:focus-visible,
+  .lb-share:focus, .lb-share:focus-visible { outline: none; }
+
+  @media (max-width: 640px) {
+    .filters { position: static; }
+    .lb-nav { width: 24vw; font-size: 1.8rem; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .card { animation: none; }
+    .card img { opacity: 1; transition: none; }
+    .lb-spin { animation: none; }
+  }
+</style>
+
+<script>
+  const grid = document.getElementById("grid")!;
+  const cards = Array.from(grid.querySelectorAll<HTMLButtonElement>(".card"));
+  const chips = Array.from(document.querySelectorAll<HTMLButtonElement>(".chip"));
+  const segs = Array.from(document.querySelectorAll<HTMLButtonElement>(".seg"));
+
+  const state: { theme: string | null; year: string | null; fav: boolean } = {
+    theme: null, year: null, fav: false,
+  };
+
+  // Pinterest-masonry: каждую карточку (в хронологическом DOM-порядке) кладём в самую
+  // короткую колонку; высоты из data-ar, без layout shift. Сам алгоритм — в синхронном
+  // is:inline-скрипте (отрабатывает до первого paint), здесь только переиспользуем его.
+  const layout = () => (window as Window & { __mason?: () => void }).__mason?.();
+  let resizeT = 0;
+  function relayout() { clearTimeout(resizeT); resizeT = window.setTimeout(layout, 120); }
+
+  function syncUI() {
+    for (const c of chips) {
+      const g = c.dataset.group, v = c.dataset.val;
+      let on = false;
+      if (g === "theme") on = state.theme === v;
+      else if (g === "year") on = state.year === v;
+      c.classList.toggle("is-active", on);
+    }
+    for (const s of segs) s.classList.toggle("is-active", (s.dataset.scope === "fav") === state.fav);
+  }
+
+  function apply() {
+    for (const c of cards) {
+      const okT = !state.theme || (c.dataset.themes ?? "").split("|").includes(state.theme);
+      const okY = !state.year || c.dataset.year === state.year;
+      const okF = !state.fav || c.dataset.fav === "1";
+      c.hidden = !(okT && okY && okF);
+    }
+    syncUI();
+    layout();
+  }
+
+  for (const c of chips) {
+    c.addEventListener("click", () => {
+      const g = c.dataset.group, v = c.dataset.val ?? null;
+      if (g === "theme") state.theme = state.theme === v ? null : v;
+      else if (g === "year") state.year = state.year === v ? null : v;
+      apply();
+    });
+  }
+  for (const s of segs) {
+    s.addEventListener("click", () => {
+      state.fav = s.dataset.scope === "fav";
+      apply();
+    });
+  }
+
+  // Lightbox
+  const lb = document.getElementById("lightbox") as HTMLDialogElement;
+  const lbImg = lb.querySelector(".lb-img") as HTMLImageElement;
+  const lbMeta = lb.querySelector(".lb-meta") as HTMLElement;
+  const lbCount = lb.querySelector(".lb-count") as HTMLElement;
+  const lbCap = lb.querySelector(".lb-cap") as HTMLElement;
+  const lbShare = lb.querySelector(".lb-share") as HTMLButtonElement;
+  const lbToast = lb.querySelector(".lb-toast") as HTMLElement;
+  const setBusy = (on: boolean) => lbCap.classList.toggle("is-busy", on);
+
+  const photoUrl = (slug: string) => location.origin + location.pathname + "#" + slug;
+  const setHash = (slug: string | null) =>
+    history.replaceState(null, "", slug ? "#" + slug : location.pathname + location.search);
+
+  let list: HTMLButtonElement[] = [];
+  let cur = 0;
+
+  let renderToken = 0;
+
+  function applySize(c: HTMLButtonElement) {
+    const ar = parseFloat(c.dataset.ar || "1");
+    const vw = window.innerWidth * 0.92, vh = window.innerHeight * 0.86;
+    let w = vw, h = vw * ar;
+    if (h > vh) { h = vh; w = vh / ar; }
+    lbImg.style.width = `${Math.round(w)}px`;
+    lbImg.style.height = `${Math.round(h)}px`;
+  }
+
+  function showImage(c: HTMLButtonElement, showThumb: boolean) {
+    const token = ++renderToken;
+    const url = c.dataset.full || "";
+    setBusy(true);
+
+    // Холодное открытие — сразу показать миниатюру, чтобы не было пустоты.
+    // Навигация — держим предыдущий резкий кадр, пока не догрузится новый.
+    if (showThumb) {
+      const thumb = c.querySelector("img");
+      lbImg.src = thumb?.currentSrc || thumb?.src || "";
+      applySize(c);
+    }
+
+    const done = () => { if (token === renderToken) setBusy(false); };
+    const lo = new Image();
+    lo.onload = () => {
+      if (token !== renderToken) return;
+      lbImg.src = url;
+      applySize(c);
+      done();
+    };
+    lo.onerror = done;
+    lo.src = url;
+  }
+
+  // агрессивный предзагруз: окно соседей ±3
+  function preloadAround() {
+    for (let d = 1; d <= 3; d++) {
+      for (const j of [cur + d, cur - d]) {
+        const n = list[j];
+        if (n) new Image().src = n.dataset.full || "";
+      }
+    }
+  }
+
+  function render(showThumb: boolean) {
+    const c = list[cur];
+    if (!c) return;
+    lbMeta.textContent = c.dataset.meta ?? "";
+    lbCount.textContent = `${cur + 1} / ${list.length}`;
+    setHash(c.dataset.slug ?? null);
+    showImage(c, showThumb);
+    preloadAround();
+  }
+  function openAt(card: HTMLButtonElement) {
+    list = cards.filter((c) => !c.hidden);
+    cur = Math.max(0, list.indexOf(card));
+    render(true);
+    lb.showModal();
+  }
+  function go(d: number) {
+    if (!list.length) return;
+    cur = (cur + d + list.length) % list.length;
+    render(false);
+  }
+
+  for (const c of cards) c.addEventListener("click", () => openAt(c));
+  (lb.querySelector(".lb-next") as HTMLButtonElement).addEventListener("click", (e) => { e.stopPropagation(); go(1); });
+  (lb.querySelector(".lb-prev") as HTMLButtonElement).addEventListener("click", (e) => { e.stopPropagation(); go(-1); });
+  (lb.querySelector(".lb-close") as HTMLButtonElement).addEventListener("click", () => lb.close());
+  lb.addEventListener("click", (e) => { if (e.target === lb || (e.target as HTMLElement).classList.contains("lb-stage")) lb.close(); });
+  lb.addEventListener("close", () => setHash(null)); // Esc / backdrop / кнопка — чистим хэш
+
+  // Share: телефон — родная шторка (Telegram и пр.), десктоп — копия ссылки в буфер
+  let toastT = 0;
+  function toast(msg: string) {
+    lbToast.textContent = msg;
+    lbToast.classList.add("show");
+    clearTimeout(toastT);
+    toastT = window.setTimeout(() => lbToast.classList.remove("show"), 1600);
+  }
+  lbShare.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    const c = list[cur];
+    if (!c) return;
+    const url = photoUrl(c.dataset.slug ?? "");
+    try {
+      if (navigator.share) await navigator.share({ title: document.title, text: c.dataset.meta || "", url });
+      else { await navigator.clipboard.writeText(url); toast("Link copied"); }
+    } catch { /* отмена шторки — игнор */ }
+  });
+  document.addEventListener("keydown", (e) => {
+    if (!lb.open) return;
+    if (e.key === "ArrowRight") go(1);
+    else if (e.key === "ArrowLeft") go(-1);
+  });
+
+  let sx = 0;
+  lb.addEventListener("touchstart", (e) => { sx = e.changedTouches[0].clientX; }, { passive: true });
+  lb.addEventListener("touchend", (e) => {
+    const dx = e.changedTouches[0].clientX - sx;
+    if (Math.abs(dx) > 50) go(dx < 0 ? 1 : -1);
+  }, { passive: true });
+
+  // первая раскладка уже сделана inline (до paint); здесь — только плавность далее
+  requestAnimationFrame(() => grid.classList.add("mason-ready"));
+  window.addEventListener("resize", relayout);
+
+  // blur-up: проявляем фото, когда загрузилось (поверх LQIP-фона карточки)
+  for (const c of cards) {
+    const im = c.querySelector("img");
+    if (im && im.complete) c.classList.add("loaded");
+    else im?.addEventListener("load", () => c.classList.add("loaded"), { once: true });
+  }
+
+  // Deep-link: #slug открывает лайтбокс на нужном фото (входящая ссылка / браузерная навигация)
+  const openBySlug = (slug: string) => {
+    const card = cards.find((c) => c.dataset.slug === slug);
+    if (card && !lb.open) openAt(card);
+  };
+  const hashSlug = () => decodeURIComponent(location.hash.slice(1));
+  if (location.hash) openBySlug(hashSlug());
+  window.addEventListener("popstate", () => {
+    if (location.hash) openBySlug(hashSlug());
+    else if (lb.open) lb.close();
+  });
+</script>

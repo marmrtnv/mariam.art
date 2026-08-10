@@ -1,0 +1,38 @@
+---
+import "../styles/global.css";
+import frauncesUrl from "../styles/fonts/fraunces.woff2?url";
+import hankenUrl from "../styles/fonts/hanken.woff2?url";
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const {
+  title = "Mariam Martynova — Art",
+  description = "Art by Mariam Martynova — painting, drawing and digital work.",
+} = Astro.props;
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="generator" content={Astro.generator} />
+    <link rel="icon" type="image/svg+xml" href={`${base}/favicon.svg`} />
+    <link rel="preload" href={frauncesUrl} as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href={hankenUrl} as="font" type="font/woff2" crossorigin />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta name="theme-color" content="#fbfbf9" />
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>

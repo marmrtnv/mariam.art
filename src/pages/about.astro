@@ -1,0 +1,92 @@
+---
+import { Image } from "astro:assets";
+import Layout from "../layouts/Layout.astro";
+import avatar from "../assets/avatar.jpg";
+
+const yearNow = new Date().getFullYear();
+// TODO: свои контакты
+const tg = "https://t.me/";
+const mail = "mailto:hello@mariam.art";
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+---
+
+<Layout
+  title="About — Mariam Martynova"
+  description="About Mariam Martynova — artist."
+>
+  <header class="masthead wrap">
+    <a class="who" href={`${base}/`}>
+      <Image class="avatar" src={avatar} width={132} height={132} alt="Mariam Martynova" loading="eager" />
+      <div class="id">
+        <h1>Mariam Martynova</h1>
+        <p>Artist · TODO: подпись под именем</p>
+      </div>
+    </a>
+    <nav class="contacts" aria-label="Navigation">
+      <a href={`${base}/`}>Works</a>
+      <a href={tg} target="_blank" rel="noopener">Telegram</a>
+      <a href={mail}>Email</a>
+    </nav>
+  </header>
+
+  <main class="about wrap">
+    <article class="prose" lang="ru">
+      <h2>Об авторе</h2>
+      <p>TODO: пара абзацев о себе — что делаешь, чем работаешь, о чём эти работы.</p>
+      <p class="reach">Связь: <a href={tg} target="_blank" rel="noopener">Telegram</a> · <a href={mail}>Email</a></p>
+    </article>
+
+    <hr class="rule" />
+
+    <article class="prose" lang="en">
+      <h2>About</h2>
+      <p>TODO: the same in English.</p>
+      <p class="reach">Contact: <a href={tg} target="_blank" rel="noopener">Telegram</a> · <a href={mail}>Email</a></p>
+    </article>
+  </main>
+
+  <footer class="footer wrap">
+    <span>© {yearNow} Mariam Martynova</span>
+    <a href={`${base}/`}>← Works</a>
+  </footer>
+</Layout>
+
+<style>
+  .masthead {
+    display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap;
+    padding-top: clamp(34px, 6vw, 64px); padding-bottom: clamp(20px, 3vw, 32px);
+  }
+  .who { display: flex; align-items: center; gap: 20px; }
+  .avatar {
+    width: clamp(60px, 9vw, 84px); height: clamp(60px, 9vw, 84px);
+    border-radius: 50%; object-fit: cover; border: 1px solid var(--line);
+  }
+  .id h1 {
+    margin: 0; font-family: var(--font-display); font-weight: 500;
+    font-size: clamp(1.7rem, 5vw, 2.6rem); line-height: 1; letter-spacing: -0.015em;
+    font-variation-settings: "opsz" 120;
+  }
+  .id p { margin: 5px 0 0; color: var(--muted); font-size: clamp(0.85rem, 2vw, 0.95rem); }
+  .contacts { display: inline-flex; gap: 20px; font-size: 0.9rem; }
+  .contacts a { color: var(--muted); border-bottom: 1px solid transparent; transition: color 0.15s, border-color 0.15s; }
+  .contacts a:hover { color: var(--fg); border-color: var(--hair); }
+
+  .about { padding-top: clamp(16px, 3vw, 30px); padding-bottom: 70px; max-width: 760px; }
+  .prose h2 {
+    font-family: var(--font-display); font-weight: 500; letter-spacing: -0.01em;
+    font-size: clamp(1.4rem, 4vw, 2rem); margin: 0 0 14px; font-variation-settings: "opsz" 90;
+  }
+  .prose p { margin: 0 0 16px; font-size: 1.06rem; line-height: 1.72; max-width: 62ch; color: #2c2c31; }
+  .prose .reach { margin-top: 22px; color: var(--muted); font-size: 0.95rem; }
+  .prose .reach a { color: var(--fg); border-bottom: 1px solid var(--hair); }
+  .prose .reach a:hover { border-color: var(--fg); }
+  .rule { border: 0; border-top: 1px solid var(--line); margin: 40px 0; }
+
+  .footer {
+    display: flex; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+    color: var(--muted); font-size: 0.85rem; padding-top: 26px; padding-bottom: 48px;
+    border-top: 1px solid var(--line);
+  }
+  .footer a { border-bottom: 1px solid transparent; }
+  .footer a:hover { color: var(--fg); border-color: var(--muted); }
+</style>

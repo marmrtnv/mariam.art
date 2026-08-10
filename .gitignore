@@ -1,0 +1,28 @@
+# build output
+dist/
+.astro/
+
+# deps
+node_modules/
+
+# env
+.env
+.env.production
+.env.local
+
+# inbox — перевалочная папка для ingest
+inbox/
+
+# картинки галереи закоммичены намеренно: CI собирает сайт из них.
+# src/assets/photos/
+
+# pickers — локальные HTML для отбора работ
+pickers/
+
+# misc
+.DS_Store
+*.log
+.vscode/
+.claude/
+.idea/
+*.iml
