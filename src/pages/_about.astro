@@ -2,30 +2,26 @@
 import { Image } from "astro:assets";
 import Layout from "../layouts/Layout.astro";
 import avatar from "../assets/avatar.jpg";
+import { tg } from "../contacts";
 
 const yearNow = new Date().getFullYear();
-// TODO: свои контакты
-const tg = "https://t.me/";
-const mail = "mailto:hello@mariam.art";
 const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 ---
 
 <Layout
-  title="About — Mariam Martynova"
-  description="About Mariam Martynova — artist."
+  title="About — Maria Martynova"
+  description="About Maria Martynova — artist."
 >
   <header class="masthead wrap">
     <a class="who" href={`${base}/`}>
-      <Image class="avatar" src={avatar} width={132} height={132} alt="Mariam Martynova" loading="eager" />
+      <Image class="avatar" src={avatar} width={132} height={132} alt="Maria Martynova" loading="eager" />
       <div class="id">
-        <h1>Mariam Martynova</h1>
-        <p>Artist · TODO: подпись под именем</p>
+        <h1 lang="ru">Мария Мартынова</h1>
       </div>
     </a>
     <nav class="contacts" aria-label="Navigation">
       <a href={`${base}/`}>Works</a>
       <a href={tg} target="_blank" rel="noopener">Telegram</a>
-      <a href={mail}>Email</a>
     </nav>
   </header>
 
@@ -33,7 +29,7 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
     <article class="prose" lang="ru">
       <h2>Об авторе</h2>
       <p>TODO: пара абзацев о себе — что делаешь, чем работаешь, о чём эти работы.</p>
-      <p class="reach">Связь: <a href={tg} target="_blank" rel="noopener">Telegram</a> · <a href={mail}>Email</a></p>
+      <p class="reach">Связь: <a href={tg} target="_blank" rel="noopener">Telegram</a></p>
     </article>
 
     <hr class="rule" />
@@ -41,12 +37,12 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
     <article class="prose" lang="en">
       <h2>About</h2>
       <p>TODO: the same in English.</p>
-      <p class="reach">Contact: <a href={tg} target="_blank" rel="noopener">Telegram</a> · <a href={mail}>Email</a></p>
+      <p class="reach">Contact: <a href={tg} target="_blank" rel="noopener">Telegram</a></p>
     </article>
   </main>
 
   <footer class="footer wrap">
-    <span>© {yearNow} Mariam Martynova</span>
+    <span>© {yearNow} Maria Martynova</span>
     <a href={`${base}/`}>← Works</a>
   </footer>
 </Layout>

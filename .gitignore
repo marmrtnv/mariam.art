@@ -26,3 +26,6 @@ pickers/
 .claude/
 .idea/
 *.iml
+
+# исходник аватара (полный кадр) — на сайте не используется
+src/assets/avatar-original.*

@@ -5,12 +5,16 @@ import Layout from "../layouts/Layout.astro";
 import avatar from "../assets/avatar.jpg";
 import lqipData from "../lqip.json";
 import themeLabels from "../themes.json";
+import { tg } from "../contacts";
 
 const LQIP = lqipData as Record<string, string>;
 
 const THEME_LABELS: Record<string, string> = themeLabels;
 const THEME_ORDER = Object.keys(THEME_LABELS);
 const themeLabel = (t: string) => THEME_LABELS[t] ?? t;
+// Подпись даты в лайтбоксе: только месяц и год — день в YAML технический (держит порядок).
+const monthLabel = (d: Date) =>
+  new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" }).format(d);
 
 const imageModules = import.meta.glob<{ default: ImageMetadata }>(
   "../assets/photos/**/*.{jpg,jpeg,png,webp,avif}",
@@ -18,8 +22,6 @@ const imageModules = import.meta.glob<{ default: ImageMetadata }>(
 );
 const byName: Record<string, ImageMetadata> = {};
 for (const path in imageModules) byName[path.split("/").pop()!] = imageModules[path].default;
-
-const fmtFull = new Intl.DateTimeFormat("en-US", { day: "numeric", month: "short", year: "numeric" });
 
 const entries = await getCollection("photos");
 const photos = entries
@@ -32,10 +34,10 @@ const photos = entries
     return {
       slug: id,
       themes,
-      year: String(data.date.getUTCFullYear()),
-      dateFull: fmtFull.format(data.date),
       favorite: data.favorite,
+      // date на сайте не показываем (дата съёмки ≠ дата создания работы) — только для порядка
       ts: data.date.getTime(),
+      when: monthLabel(data.date),
       img,
     };
   })
@@ -48,7 +50,6 @@ for (const p of photos) {
 }
 
 const EAGER = 8; // первые карточки грузим приоритетно — ускоряет появление верхнего экрана (LCP)
-const years = [...new Set(photos.map((p) => p.year))].sort().reverse();
 const themesPresent = THEME_ORDER.filter((t) => photos.some((p) => p.themes.includes(t)));
 const favCount = photos.filter((p) => p.favorite).length;
 const yearNow = new Date().getFullYear();
@@ -58,32 +59,29 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 <Layout>
   <header class="masthead wrap">
     <div class="who">
-      <Image class="avatar" src={avatar} width={132} height={132} alt="Mariam Martynova" loading="eager" />
+      <Image class="avatar" src={avatar} width={132} height={132} alt="Maria Martynova" loading="eager" />
       <div class="id">
-        <h1>Mariam Martynova</h1>
-        <p>Artist · TODO: подпись под именем</p>
+        <h1 lang="ru">Мария Мартынова</h1>
       </div>
     </div>
     <nav class="contacts" aria-label="Contacts">
-      <a href={`${base}/about`}>About</a>
-      {/* TODO: свои контакты */}
-      <a href="https://t.me/" target="_blank" rel="noopener">Telegram</a>
-      <a href="mailto:hello@mariam.art">Email</a>
+      <a href={tg} target="_blank" rel="noopener">Telegram</a>
     </nav>
   </header>
 
   <nav class="filters wrap" aria-label="Filters">
     <div class="filters-rows">
       <div class="frow" role="group" aria-label="Themes">
+        <button class="chip is-active" data-group="theme" data-all>All</button>
         {themesPresent.map((t) => (
           <button class="chip" data-group="theme" data-val={t}>{themeLabel(t)}</button>
         ))}
       </div>
-      <div class="frow frow-years" role="group" aria-label="Years">
-        {years.map((y) => (
-          <button class="chip chip-year" data-group="year" data-val={y}>{y}</button>
-        ))}
-      </div>
+    </div>
+    <div class="side">
+      <button class="chip order" id="order" data-dir="new" title="Switch order">
+        <span class="order-txt">Newest first</span><span class="order-arrow" aria-hidden="true">↓</span>
+      </button>
     </div>
     {favCount > 0 && (
       <div class="scope" role="group" aria-label="Scope">
@@ -100,13 +98,12 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
         class:list={["card", { "is-fav": p.favorite }]}
         style={`--i:${Math.min(i, 24)};background-image:url(${LQIP[p.slug] ?? ""})`}
         data-themes={p.themes.join("|")}
-        data-year={p.year}
         data-fav={p.favorite ? "1" : "0"}
         data-ar={(p.img.height / p.img.width).toFixed(4)}
         data-slug={p.slug}
         data-full={full[p.slug]}
-        data-meta={`${p.dateFull} · ${p.themes.map(themeLabel).join(", ")}`}
-        aria-label={`Open photo, ${p.dateFull}`}
+        data-meta={[p.when, p.themes.map(themeLabel).join(", ")].filter(Boolean).join(" · ")}
+        aria-label={`Open work, ${p.when}${p.themes.length ? `, ${p.themes.map(themeLabel).join(", ")}` : ""}`}
       >
         <Image
           src={p.img}
@@ -129,11 +126,11 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
   <script is:inline>
     (function () {
       var grid = document.getElementById("grid");
-      var cards = [].slice.call(grid.querySelectorAll(".card"));
       var GAP = 14;
       function columns(w) { return w < 520 ? 2 : Math.max(2, Math.floor((w + GAP) / (290 + GAP))); }
       function layout() {
         var w = grid.clientWidth; if (!w) return;
+        var cards = [].slice.call(grid.querySelectorAll(".card"));
         var cols = columns(w), colW = (w - GAP * (cols - 1)) / cols, colH = new Array(cols).fill(0);
         for (var n = 0; n < cards.length; n++) {
           var c = cards[n]; if (c.hidden) continue;
@@ -150,9 +147,8 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
   </script>
 
   <footer class="footer wrap">
-    <span>© {yearNow} Mariam Martynova</span>
+    <span>© {yearNow} Maria Martynova</span>
     <span>{photos.length} works</span>
-    <a href={`${base}/about`}>About</a>
   </footer>
 
   <dialog id="lightbox" class="lightbox">
@@ -208,10 +204,9 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
   }
   .filters-rows { display: flex; flex-direction: column; gap: 9px; flex: 1 1 auto; min-width: 0; }
   .frow { display: flex; flex-wrap: wrap; gap: 7px; }
-  .frow-years { gap: 6px; }
-  .frow-years .chip { font-size: 0.76rem; padding: 6px 12px; color: var(--muted); background: transparent; }
-  .frow-years .chip:hover { color: var(--fg); }
-  .frow-years .chip.is-active { background: var(--chip-active); color: var(--chip-active-fg); border-color: var(--chip-active); }
+  .side { flex: 0 0 auto; }
+  .order { display: inline-flex; align-items: center; gap: 7px; }
+  .order-arrow { font-size: 0.9em; opacity: 0.75; }
   .scope { flex: 0 0 auto; display: inline-flex; gap: 3px; padding: 3px; background: var(--chip); border: 1px solid var(--line); border-radius: 999px; }
   .seg { font: inherit; font-size: 0.82rem; line-height: 1; cursor: pointer; white-space: nowrap; padding: 7px 14px; border-radius: 999px; border: 0; background: transparent; color: var(--chip-fg); transition: background 0.15s, color 0.15s; }
   .seg:hover { color: var(--fg); }
@@ -224,7 +219,6 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
   }
   .chip:hover { color: var(--fg); border-color: var(--hair); }
   .chip.is-active { background: var(--chip-active); color: var(--chip-active-fg); border-color: var(--chip-active); }
-  .chip-year { font-variant-numeric: tabular-nums; }
 
   /* Masonry */
   .gallery { padding-top: 18px; padding-bottom: 60px; }
@@ -322,12 +316,13 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 <script>
   const grid = document.getElementById("grid")!;
-  const cards = Array.from(grid.querySelectorAll<HTMLButtonElement>(".card"));
+  const readCards = () => Array.from(grid.querySelectorAll<HTMLButtonElement>(".card"));
+  let cards = readCards();
   const chips = Array.from(document.querySelectorAll<HTMLButtonElement>(".chip"));
   const segs = Array.from(document.querySelectorAll<HTMLButtonElement>(".seg"));
 
-  const state: { theme: string | null; year: string | null; fav: boolean } = {
-    theme: null, year: null, fav: false,
+  const state: { theme: string | null; fav: boolean } = {
+    theme: null, fav: false,
   };
 
   // Pinterest-masonry: каждую карточку (в хронологическом DOM-порядке) кладём в самую
@@ -340,10 +335,8 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
   function syncUI() {
     for (const c of chips) {
       const g = c.dataset.group, v = c.dataset.val;
-      let on = false;
-      if (g === "theme") on = state.theme === v;
-      else if (g === "year") on = state.year === v;
-      c.classList.toggle("is-active", on);
+      const isAll = c.dataset.all !== undefined;
+      c.classList.toggle("is-active", isAll ? state.theme === null : g === "theme" && state.theme === v);
     }
     for (const s of segs) s.classList.toggle("is-active", (s.dataset.scope === "fav") === state.fav);
   }
@@ -351,9 +344,8 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
   function apply() {
     for (const c of cards) {
       const okT = !state.theme || (c.dataset.themes ?? "").split("|").includes(state.theme);
-      const okY = !state.year || c.dataset.year === state.year;
       const okF = !state.fav || c.dataset.fav === "1";
-      c.hidden = !(okT && okY && okF);
+      c.hidden = !(okT && okF);
     }
     syncUI();
     layout();
@@ -361,9 +353,9 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 
   for (const c of chips) {
     c.addEventListener("click", () => {
-      const g = c.dataset.group, v = c.dataset.val ?? null;
-      if (g === "theme") state.theme = state.theme === v ? null : v;
-      else if (g === "year") state.year = state.year === v ? null : v;
+      const v = c.dataset.val ?? null;
+      if (c.dataset.all !== undefined) state.theme = null;
+      else if (c.dataset.group === "theme") state.theme = state.theme === v ? null : v;
       apply();
     });
   }
@@ -373,6 +365,23 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
       apply();
     });
   }
+
+  // Порядок показа. DOM-порядок — единственный источник: по нему считает масонри
+  // и по нему листает лайтбокс, поэтому карточки реально переставляем.
+  const orderBtn = document.getElementById("order") as HTMLButtonElement;
+  const orderTxt = orderBtn.querySelector(".order-txt") as HTMLElement;
+  const orderArrow = orderBtn.querySelector(".order-arrow") as HTMLElement;
+  orderBtn.addEventListener("click", () => {
+    const newestFirst = orderBtn.dataset.dir !== "new";
+    orderBtn.dataset.dir = newestFirst ? "new" : "old";
+    orderTxt.textContent = newestFirst ? "Newest first" : "Oldest first";
+    orderArrow.textContent = newestFirst ? "\u2193" : "\u2191";
+    const frag = document.createDocumentFragment();
+    for (const c of cards.slice().reverse()) frag.appendChild(c);
+    grid.appendChild(frag);
+    cards = readCards();
+    apply();
+  });
 
   // Lightbox
   const lb = document.getElementById("lightbox") as HTMLDialogElement;

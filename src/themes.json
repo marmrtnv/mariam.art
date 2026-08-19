@@ -1,8 +1,8 @@
 {
   "painting": "Painting",
   "drawing": "Drawing",
+  "print": "Print",
+  "collage": "Collage",
   "sketch": "Sketch",
-  "digital": "Digital",
-  "portrait": "Portrait",
-  "abstract": "Abstract"
+  "digital": "Digital"
 }
